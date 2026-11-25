@@ -1,0 +1,286 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  FACULTY
+  STUDENT
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+}
+
+model User {
+  id                 String               @id @default(auto()) @map("_id") @db.ObjectId
+  email              String               @unique
+  passwordHash       String               @map("password_hash")
+  role               Role
+  isActive           Boolean              @default(true) @map("is_active")
+  mustChangePassword Boolean              @default(false) @map("must_change_password")
+  lastLoginAt        DateTime?            @map("last_login_at")
+  createdAt          DateTime             @default(now()) @map("created_at")
+  updatedAt          DateTime             @updatedAt @map("updated_at")
+
+  faculty            Faculty?
+  student            Student?
+  resetTokens        PasswordResetToken[]
+
+  @@index([role])
+  @@map("users")
+}
+
+model Department {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  code        String    @unique
+  name        String    @unique
+  description String?
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  courses     Course[]
+  faculty     Faculty[]
+  students    Student[]
+  classes     Class[]
+  subjects    Subject[]
+
+  @@map("departments")
+}
+
+model Course {
+  id                String     @id @default(auto()) @map("_id") @db.ObjectId
+  code              String     @unique
+  name              String
+  durationSemesters Int        @default(8) @map("duration_semesters")
+  departmentId      String     @map("department_id") @db.ObjectId
+  createdAt         DateTime   @default(now()) @map("created_at")
+  updatedAt         DateTime   @updatedAt @map("updated_at")
+
+  department        Department @relation(fields: [departmentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  classes           Class[]
+  students          Student[]
+  subjects          Subject[]
+
+  @@index([departmentId])
+  @@map("courses")
+}
+
+model Semester {
+  id           String       @id @default(auto()) @map("_id") @db.ObjectId
+  number       Int
+  name         String
+  academicYear String       @map("academic_year")
+  isCurrent    Boolean      @default(false) @map("is_current")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+
+  classes      Class[]
+  students     Student[]
+  subjects     Subject[]
+  enrollments  Enrollment[]
+
+  @@unique([number, academicYear])
+  @@map("semesters")
+}
+
+model Faculty {
+  id           String              @id @default(auto()) @map("_id") @db.ObjectId
+  userId       String              @unique @map("user_id") @db.ObjectId
+  facultyCode  String              @unique @map("faculty_code")
+  fullName     String              @map("full_name")
+  phone        String?
+  designation  String              @default("Assistant Professor")
+  departmentId String              @map("department_id") @db.ObjectId
+  joiningDate  DateTime            @default(now()) @map("joining_date")
+  createdAt    DateTime            @default(now()) @map("created_at")
+  updatedAt    DateTime            @updatedAt @map("updated_at")
+
+  user            User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  department      Department          @relation(fields: [departmentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  facultySubjects FacultySubject[]
+  sessions        AttendanceSession[]
+  markedRecords   AttendanceRecord[]
+
+  @@index([departmentId])
+  @@index([fullName])
+  @@map("faculty")
+}
+
+model Class {
+  id           String              @id @default(auto()) @map("_id") @db.ObjectId
+  name         String
+  section      String
+  academicYear String              @map("academic_year")
+  departmentId String              @map("department_id") @db.ObjectId
+  courseId     String              @map("course_id") @db.ObjectId
+  semesterId   String              @map("semester_id") @db.ObjectId
+  createdAt    DateTime            @default(now()) @map("created_at")
+  updatedAt    DateTime            @updatedAt @map("updated_at")
+
+  department      Department          @relation(fields: [departmentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  course          Course              @relation(fields: [courseId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  semester        Semester            @relation(fields: [semesterId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  students        Student[]
+  facultySubjects FacultySubject[]
+  enrollments     Enrollment[]
+  sessions        AttendanceSession[]
+
+  @@unique([courseId, semesterId, section, academicYear])
+  @@index([departmentId])
+  @@map("classes")
+}
+
+model Student {
+  id             String             @id @default(auto()) @map("_id") @db.ObjectId
+  userId         String             @unique @map("user_id") @db.ObjectId
+  studentCode    String             @unique @map("student_code")
+  fullName       String             @map("full_name")
+  phone          String?
+  departmentId   String             @map("department_id") @db.ObjectId
+  courseId       String             @map("course_id") @db.ObjectId
+  semesterId     String             @map("semester_id") @db.ObjectId
+  classId        String?            @map("class_id") @db.ObjectId
+  section        String             @default("A")
+  enrollmentDate DateTime           @default(now()) @map("enrollment_date")
+  createdAt      DateTime           @default(now()) @map("created_at")
+  updatedAt      DateTime           @updatedAt @map("updated_at")
+
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  department        Department         @relation(fields: [departmentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  course            Course             @relation(fields: [courseId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  semester          Semester           @relation(fields: [semesterId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  class             Class?             @relation(fields: [classId], references: [id], onDelete: SetNull)
+  enrollments       Enrollment[]
+  attendanceRecords AttendanceRecord[]
+
+  @@index([departmentId])
+  @@index([courseId])
+  @@index([semesterId])
+  @@index([classId])
+  @@index([fullName])
+  @@map("students")
+}
+
+model Subject {
+  id           String              @id @default(auto()) @map("_id") @db.ObjectId
+  code         String              @unique
+  name         String
+  credits      Int                 @default(3)
+  departmentId String              @map("department_id") @db.ObjectId
+  courseId     String              @map("course_id") @db.ObjectId
+  semesterId   String              @map("semester_id") @db.ObjectId
+  createdAt    DateTime            @default(now()) @map("created_at")
+  updatedAt    DateTime            @updatedAt @map("updated_at")
+
+  department      Department          @relation(fields: [departmentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  course          Course              @relation(fields: [courseId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  semester        Semester            @relation(fields: [semesterId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  facultySubjects FacultySubject[]
+  enrollments     Enrollment[]
+  sessions        AttendanceSession[]
+
+  @@index([departmentId])
+  @@index([courseId, semesterId])
+  @@map("subjects")
+}
+
+model FacultySubject {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  facultyId String   @map("faculty_id") @db.ObjectId
+  subjectId String   @map("subject_id") @db.ObjectId
+  classId   String?  @map("class_id") @db.ObjectId
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  faculty Faculty @relation(fields: [facultyId], references: [id], onDelete: Cascade)
+  subject Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  class   Class?  @relation(fields: [classId], references: [id], onDelete: SetNull)
+
+  @@unique([facultyId, subjectId, classId])
+  @@index([subjectId])
+  @@map("faculty_subjects")
+}
+
+model Enrollment {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  studentId  String   @map("student_id") @db.ObjectId
+  subjectId  String   @map("subject_id") @db.ObjectId
+  classId    String   @map("class_id") @db.ObjectId
+  semesterId String   @map("semester_id") @db.ObjectId
+  enrolledAt DateTime @default(now()) @map("enrolled_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  student  Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  subject  Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  class    Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+  semester Semester @relation(fields: [semesterId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([studentId, subjectId])
+  @@index([subjectId])
+  @@index([classId])
+  @@map("enrollments")
+}
+
+model AttendanceSession {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  subjectId   String   @map("subject_id") @db.ObjectId
+  classId     String   @map("class_id") @db.ObjectId
+  facultyId   String   @map("faculty_id") @db.ObjectId
+  section     String
+  sessionDate DateTime @map("session_date")
+  topic       String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  subject Subject            @relation(fields: [subjectId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  class   Class              @relation(fields: [classId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  faculty Faculty            @relation(fields: [facultyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  records AttendanceRecord[]
+
+  @@unique([subjectId, classId, section, sessionDate])
+  @@index([sessionDate])
+  @@index([facultyId])
+  @@map("attendance_sessions")
+}
+
+model AttendanceRecord {
+  id         String           @id @default(auto()) @map("_id") @db.ObjectId
+  sessionId  String           @map("session_id") @db.ObjectId
+  studentId  String           @map("student_id") @db.ObjectId
+  status     AttendanceStatus
+  remarks    String?
+  markedById String           @map("marked_by_id") @db.ObjectId
+  createdAt  DateTime         @default(now()) @map("created_at")
+  updatedAt  DateTime         @updatedAt @map("updated_at")
+
+  session  AttendanceSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  student  Student           @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  markedBy Faculty           @relation(fields: [markedById], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([sessionId, studentId])
+  @@index([studentId])
+  @@index([status])
+  @@map("attendance_records")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String    @map("user_id") @db.ObjectId
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_reset_tokens")
+}
